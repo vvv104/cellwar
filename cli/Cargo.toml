@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 cellwar-engine = { path = "../engine" }
 serde_json = "1"
+crossterm = "0.27"
