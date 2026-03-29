@@ -4,7 +4,7 @@ use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 use crossterm::{
     cursor::{Hide, MoveTo, Show},
-    event::{self, Event, KeyCode, KeyModifiers},
+    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
     execute, queue,
     style::{
         Attribute, Color, Print, ResetColor, SetAttribute, SetBackgroundColor,
@@ -336,6 +336,8 @@ fn human_turn(state: &mut GameState, player_id: u8) {
         }
         sel_idx = sel_idx.min(available.len() - 1);
         let sel_id = available[sel_idx];
+        // Compute valid moves once per iteration, reuse in Enter and arrow branches
+        let vset = valid_vectors(state, player_id, sel_id);
 
         render(state, player_id, Some(sel_id), vector, in_vector_mode);
 
@@ -344,8 +346,10 @@ fn human_turn(state: &mut GameState, player_id: u8) {
             Err(_) => break,
         };
 
+        // Only handle key-down events; ignore Repeat and Release to prevent
+        // a single keypress from triggering multiple vector moves.
         let key = match event {
-            Event::Key(k) => k,
+            Event::Key(k) if k.kind == KeyEventKind::Press => k,
             _ => continue,
         };
 
@@ -385,8 +389,10 @@ fn human_turn(state: &mut GameState, player_id: u8) {
             }
 
             // ── Confirm action ─────────────────────────────────────────
+            // If no vector was set, default to (0,0) — valid for combat units.
             KeyCode::Enter => {
-                if let Some((dx, dy)) = vector {
+                let (dx, dy) = vector.unwrap_or((0, 0));
+                if vset.contains(&(dx, dy)) {
                     if apply_action(
                         state,
                         player_id,
@@ -397,7 +403,6 @@ fn human_turn(state: &mut GameState, player_id: u8) {
                     {
                         vector = None;
                         in_vector_mode = false;
-                        // sel_idx is clamped at top of loop to new available list
                     }
                 }
             }
@@ -411,8 +416,6 @@ fn human_turn(state: &mut GameState, player_id: u8) {
                     KeyCode::Right => (1, 0),
                     _ => unreachable!(),
                 };
-
-                let vset = valid_vectors(state, player_id, sel_id);
 
                 if !in_vector_mode {
                     // First press: jump directly to that direction if valid
